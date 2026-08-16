@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prediction Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container result-container">
+        <h1>🎯 Prediction Result</h1>
+        
+        <div class="result-card">
+            <div class="score">
+                <span class="score-number">{{ prediction }}</span>
+                <span class="score-label">/ 5</span>
+            </div>
+            <div class="sentiment">{{ sentiment }}</div>
+            <div class="model-info">Model Used: <strong>{{ model_used }}</strong></div>
+        </div>
+
+        <div class="score-scale">
+            <div class="scale-item {% if prediction == 1 %}active{% endif %}">1 😡</div>
+            <div class="scale-item {% if prediction == 2 %}active{% endif %}">2 😞</div>
+            <div class="scale-item {% if prediction == 3 %}active{% endif %}">3 😐</div>
+            <div class="scale-item {% if prediction == 4 %}active{% endif %}">4 😊</div>
+            <div class="scale-item {% if prediction == 5 %}active{% endif %}">5 🤩</div>
+        </div>
+
+        <a href="/" class="back-btn">← Make Another Prediction</a>
+    </div>
+</body>
+</html>
