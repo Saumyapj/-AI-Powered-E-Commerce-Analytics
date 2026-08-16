@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Sentiment Predictor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🛒 Customer Sentiment Prediction</h1>
+        <p class="subtitle">Olist Brazilian E-Commerce - Review Score Predictor</p>
+        
+        <form action="/predict" method="POST">
+            
+            <h2>📦 Product Details</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Price (R$)</label>
+                    <input type="number" name="price" step="0.01" value="120.50" required>
+                </div>
+                <div class="form-group">
+                    <label>Freight Value (R$)</label>
+                    <input type="number" name="freight_value" step="0.01" value="18.00" required>
+                </div>
+                <div class="form-group">
+                    <label>Product Weight (g)</label>
+                    <input type="number" name="product_weight_g" value="1500" required>
+                </div>
+                <div class="form-group">
+                    <label>Length (cm)</label>
+                    <input type="number" name="product_length_cm" value="30" required>
+                </div>
+                <div class="form-group">
+                    <label>Height (cm)</label>
+                    <input type="number" name="product_height_cm" value="10" required>
+                </div>
+                <div class="form-group">
+                    <label>Width (cm)</label>
+                    <input type="number" name="product_width_cm" value="20" required>
+                </div>
+                <div class="form-group">
+                    <label>Photos Qty</label>
+                    <input type="number" name="product_photos_qty" value="3" required>
+                </div>
+                <div class="form-group">
+                    <label>Name Length</label>
+                    <input type="number" name="product_name_lenght" value="50" required>
+                </div>
+                <div class="form-group">
+                    <label>Description Length</label>
+                    <input type="number" name="product_description_lenght" value="500" required>
+                </div>
+            </div>
+
+            <h2>💳 Payment Details</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Payment Value (R$)</label>
+                    <input type="number" name="payment_value" step="0.01" value="138.50" required>
+                </div>
+                <div class="form-group">
+                    <label>Installments</label>
+                    <input type="number" name="payment_installments" value="3" required>
+                </div>
+                <div class="form-group">
+                    <label>Payment Type</label>
+                    <select name="payment_type">
+                        <option value="credit_card">Credit Card</option>
+                        <option value="boleto">Boleto</option>
+                        <option value="voucher">Voucher</option>
+                        <option value="debit_card">Debit Card</option>
+                    </select>
+                </div>
+            </div>
+
+            <h2>🚚 Delivery Details</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Delivery Days</label>
+                    <input type="number" name="delivery_days" value="10" required>
+                </div>
+                <div class="form-group">
+                    <label>Days vs Estimated (+ = early)</label>
+                    <input type="number" name="delivery_vs_estimated" value="5" required>
+                </div>
+                <div class="form-group">
+                    <label>Approval Hours</label>
+                    <input type="number" name="approval_hours" step="0.1" value="2.5" required>
+                </div>
+            </div>
+
+            <h2>📍 Customer & Product Info</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Customer State</label>
+                    <select name="customer_state">
+                        <option value="SP">São Paulo (SP)</option>
+                        <option value="RJ">Rio de Janeiro (RJ)</option>
+                        <option value="MG">Minas Gerais (MG)</option>
+                        <option value="RS">Rio Grande do Sul (RS)</option>
+                        <option value="PR">Paraná (PR)</option>
+                        <option value="BA">Bahia (BA)</option>
+                        <option value="SC">Santa Catarina (SC)</option>
+                        <option value="DF">Distrito Federal (DF)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Product Category</label>
+                    <select name="product_category">
+                        <option value="housewares">Housewares</option>
+                        <option value="auto">Automotive</option>
+                        <option value="toys">Toys</option>
+                        <option value="furniture_decor">Furniture</option>
+                        <option value="electronics">Electronics</option>
+                        <option value="baby">Baby</option>
+                        <option value="garden_tools">Garden Tools</option>
+                        <option value="perfumery">Perfumery</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Order Status</label>
+                    <select name="order_status">
+                        <option value="delivered">Delivered</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="invoiced">Invoiced</option>
+                    </select>
+                </div>
+            </div>
+
+            <h2>🤖 Model Selection</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Choose Model</label>
+                    <select name="model_choice">
+                        <option value="best">Best Model (Auto)</option>
+                        <option value="random_forest">Random Forest</option>
+                        <option value="decision_tree">Decision Tree</option>
+                        <option value="xgboost">XGBoost</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" class="predict-btn">🔮 Predict Sentiment</button>
+        </form>
+    </div>
+</body>
+</html>
+
