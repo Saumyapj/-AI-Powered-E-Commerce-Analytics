@@ -1,0 +1,63 @@
+{
+  "best_model": "RandomForest",
+  "trained_at": "2026-08-14T16:22:36.769638",
+  "history_range": [
+    "2016-09-15",
+    "2018-08-29"
+  ],
+  "evaluation": [
+    {
+      "Model": "RandomForest",
+      "WAPE_%": 24.47,
+      "SMAPE_%": 34.42,
+      "MAE": 10477.08,
+      "RMSE": 12751.86,
+      "R2": 0.6734
+    },
+    {
+      "Model": "XGBoost",
+      "WAPE_%": 25.8,
+      "SMAPE_%": 35.14,
+      "MAE": 11043.79,
+      "RMSE": 13570.63,
+      "R2": 0.6301
+    },
+    {
+      "Model": "Hybrid",
+      "WAPE_%": 29.65,
+      "SMAPE_%": 38.99,
+      "MAE": 12696.21,
+      "RMSE": 16521.22,
+      "R2": 0.4517
+    }
+  ],
+  "feature_cols": [
+    "lag_1",
+    "lag_2",
+    "lag_3",
+    "lag_7",
+    "lag_14",
+    "lag_21",
+    "lag_30",
+    "roll_mean_7",
+    "roll_std_7",
+    "roll_mean_14",
+    "roll_mean_30",
+    "is_weekend",
+    "sin_dayofweek",
+    "cos_dayofweek",
+    "sin_week",
+    "cos_week",
+    "sin_month",
+    "cos_month",
+    "sin_dayofyear",
+    "cos_dayofyear",
+    "is_black_friday",
+    "is_holiday_season",
+    "quarter",
+    "year",
+    "avg_freight_pct",
+    "avg_installments",
+    "avg_price"
+  ]
+}
