@@ -1,0 +1,77 @@
+SALES & REVENUE KPIs
+================================================================
+Computed by models/generate_kpis.py from the cleaned Olist dataset and
+saved to models/artifacts/kpi_summary.json — this powers the dashboard
+cards, charts, and grounds the AI insights/chat layer.
+
+HEADLINE NUMBERS (full dataset, 2016-09 to 2018-10)
+- Total revenue (sum of payment_value): R$ 20,579,664.01
+- Total orders (unique order_id): 99,441
+- Total unique customers (customer_unique_id): 96,096
+- Total sellers: 3,095
+- Average order value: R$ 206.95
+- Total freight cost: R$ 2,370,031.65
+- Delivery success rate: 97.13% of order rows have order_status = "delivered"
+- Cancellation rate: 0.75% (750 canceled orders out of 99,441)
+
+ORDERS BY STATUS
+- delivered: 115,723
+- shipped: 1,256
+- canceled: 750
+- unavailable: 652
+- invoiced: 378
+- processing: 376
+- created: 5
+- approved: 3
+
+REVENUE TREND (monthly, payment_value sum)
+Ramps from a near-zero pilot in Sep-Oct 2016 to a steady ~R$1.0-1.6M/month
+from late 2017 through mid-2018. Selected months:
+- 2017-01: R$190,806   2017-06: R$613,777   2017-11: R$1,610,581 (peak month,
+  Black Friday effect)   2017-12: R$1,060,950
+- 2018-01: R$1,425,461  2018-04: R$1,500,373  2018-05: R$1,512,011
+  2018-08: R$1,248,943 (last reasonably complete month; Sep/Oct 2018 data
+  is a sparse tail and should be excluded from trend/seasonality reads)
+Order volume follows the same shape: from ~1,000 orders/month in Jan 2017
+up to 9,191 orders in Nov 2017 (Black Friday spike) and a steady 7,000-8,700
+orders/month through mid-2018.
+
+REVENUE BY STATE (top states by customer revenue)
+1. SP (São Paulo): R$7,726,078
+2. RJ (Rio de Janeiro): R$2,795,616
+3. MG (Minas Gerais): R$2,351,221
+4. RS: R$1,160,176
+5. PR: R$1,079,795
+6. BA: R$805,071
+7. SC: R$801,276
+8. GO: R$520,482
+9. DF: R$438,095
+10. ES: R$408,612
+SP alone accounts for roughly 38% of total revenue; SP+RJ+MG together are
+the dominant three states for both revenue and customer count.
+
+REVENUE BY PRODUCT CATEGORY (top 10 by payment_value)
+1. bed_bath_table: R$1,743,999 (11,988 orders)
+2. health_beauty: R$1,662,964 (10,032 orders)
+3. computers_accessories: R$1,599,481 (8,150 orders)
+4. furniture_decor: R$1,443,964 (8,832 orders)
+5. watches_gifts: R$1,430,553 (6,213 orders)
+6. sports_leisure: R$1,400,223 (9,004 orders)
+7. housewares: R$1,097,900 (7,380 orders)
+8. auto: R$855,096 (4,400 orders)
+9. garden_tools: R$840,722 (4,590 orders)
+10. cool_stuff: R$781,934 (3,999 orders)
+
+PAYMENT METHODS
+- Revenue share: credit_card R$15,775,451 (~74%), boleto R$4,110,921 (~19%),
+  voucher R$435,918 (~5%), debit_card R$257,375 (~1.5%)
+- Average payment value: credit_card R$179.72, boleto R$177.27,
+  debit_card R$150.86, voucher R$67.43
+- 50.1% of orders are paid in installments; higher-value orders use more
+  installments on average.
+
+CUSTOMER/ORDER STRUCTURE
+- ~90% of orders contain a single line item — a key input for the
+  recommendation module's cross-sell framing.
+- Only ~3.1% of customers are repeat buyers (frequency > 1) — retention
+  is flagged as the single biggest growth lever in the EDA summary.

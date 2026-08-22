@@ -1,0 +1,62 @@
+PRODUCT RECOMMENDATION ENGINE
+================================================================
+Powers recommendation_app.py ("E-Commerce Recommendation Engine").
+Offers two interchangeable recommendation strategies over the same
+32,951-product catalog, selectable by the user in the Streamlit sidebar.
+
+WHY A RECOMMENDATION ENGINE
+- ~90% of orders in the dataset contain a single item (see
+  product_analysis.txt) — most customers only interact with one product
+  per visit, so surfacing relevant "similar products" is the platform's
+  main lever for cross-sell/basket growth, since there is very little
+  natural multi-item co-purchase signal to mine directly.
+
+PRODUCT CATALOG (product_catalog.pkl)
+- 32,951 rows x 8 columns: product_id, product_category_name_english,
+  price, review_score, product_weight_g, and three scaled/normalized
+  versions of the numeric fields (price_scaled, rating_scaled,
+  weight_scaled) used as model inputs.
+
+STRATEGY 1: CONTENT-BASED FILTERING (knn_content_model.pkl)
+- A NearestNeighbors model fit over a "combined_features" matrix
+  (TF-IDF text features plus the scaled numeric product attributes:
+  price_scaled, rating_scaled, weight_scaled) — i.e. products are
+  considered similar if they share category/text signal AND similar
+  price/rating/weight profile.
+- Given a query product, get_recommendations() looks up its row index,
+  pulls its feature vector, and calls model.kneighbors() to retrieve the
+  top-N nearest products (excluding the product itself), returning
+  product_id, category, price, review_score, and a similarity_score
+  (1 - distance, rounded to 4 decimals).
+
+STRATEGY 2: MATRIX FACTORIZATION / SVD (knn_svd_model.pkl + latent_matrix.pkl)
+- combined_features are compressed with TruncatedSVD into a lower-
+  dimensional latent_matrix (one latent vector per product).
+- A second NearestNeighbors model is fit on this latent space, so
+  recommendations reflect broader learned similarity structure rather
+  than raw feature closeness — this strategy is typically better at
+  surfacing less-obvious but relevant cross-category matches.
+
+APP UX
+- Sidebar lets the user pick a product_id, choose "Enhanced Content-
+  Based (TF-IDF + Features)" or "Matrix Factorization (TruncatedSVD)",
+  and set the number of recommendations to return (1-10, default 5).
+- The selected product's category, price, and ID are shown as a
+  reference card before running the model.
+- Results are displayed as a formatted table (price as currency,
+  category title-cased) with each recommended product's similarity
+  score.
+
+OPERATIONAL NOTES
+- All five artifacts (product_catalog.pkl, knn_content_model.pkl,
+  combined_features.pkl, knn_svd_model.pkl, latent_matrix.pkl) are
+  loaded together via joblib and cached with @st.cache_resource so the
+  models are only loaded once per session.
+- get_recommendations() returns an empty DataFrame if the requested
+  product_id isn't found in the catalog (defensive check before indexing).
+- No formal offline recommendation-quality metrics (precision@k,
+  recall@k, etc.) are computed in the current pipeline — recommendation
+  quality is currently assessed qualitatively via the app's similarity
+  scores and spot-checking, not a held-out evaluation set. This is a
+  natural next step if the platform needs a quantitative recommendation
+  KPI to report alongside the forecasting/sentiment model metrics.

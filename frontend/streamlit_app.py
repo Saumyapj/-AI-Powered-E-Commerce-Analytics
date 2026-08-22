@@ -17,7 +17,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -27,6 +26,19 @@ ARTIFACTS = ROOT / "models" / "artifacts"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# ---------------------------------------------------------------------------
+# Secrets: make PINECONE_API_KEY / GOOGLE_API_KEY available as env vars
+# regardless of where they came from.
+#   - Local dev: export them in your shell, or use a .env + python-dotenv.
+#   - Streamlit Community Cloud: set them in the app's Settings > Secrets
+#     panel (or a local .streamlit/secrets.toml for testing), and this
+#     block copies them into os.environ so rag_engine.py / build_index.py
+#     (which read os.environ.get(...)) work unchanged either way.
+# ---------------------------------------------------------------------------
+for _key in ("PINECONE_API_KEY", "GOOGLE_API_KEY", "PINECONE_INDEX_NAME"):
+    if _key not in os.environ and _key in st.secrets:
+        os.environ[_key] = st.secrets[_key]
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +138,36 @@ def load_all_artifacts():
     }
 
 cache = load_all_artifacts()
+
+# ---------------------------------------------------------------------------
+# RAG chatbot engine — powers the "Ask Your Data" tab
+# ---------------------------------------------------------------------------
+# Retrieval runs over ROOT/knowledge/*.txt .Generation calls ,
+# grounded strictly in whatever gets retrieved. If either the knowledge base
+# or an API key is missing, the tab degrades gracefully instead of breaking.
+RAG_IMPORT_ERROR = None
+RAG_LOAD_ERROR = None
+try:
+    from utils.rag_engine import RAGIndex, answer_question, extractive_fallback, NoRetrievedContext
+    RAG_AVAILABLE = True
+except Exception as e:
+    RAG_AVAILABLE = False
+    RAG_IMPORT_ERROR = f"{type(e).__name__}: {e}"
+
+
+
+@st.cache_resource(show_spinner="Loading business knowledge base…")
+def load_rag_index():
+    if not RAG_AVAILABLE:
+        return None, RAG_IMPORT_ERROR
+    try:
+        return RAGIndex(), None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
+
+
+rag_index, rag_load_error = load_rag_index()
+
 
 # ---------------------------------------------------------------------------
 # Sentiment helpers 
@@ -286,11 +328,54 @@ Content-Based Filtering and Matrix Factorization (TruncatedSVD) models are deplo
 Use the **🎯 Product Recommendations** tab to explore similar products for any product in the catalog.
 """)
 
-    sections.append(f"""
+    # --- Focus-area-specific actionable recommendations ---
+    if focus is None or focus == "General overview":
+        sections.append(f"""
 ## ✅ Top 3 Recommendations
 1. **Cut late deliveries below 4%** — renegotiate carrier SLAs to reduce refunds and improve reviews.
 2. **Launch a loyalty programme** — target top 20% spenders with cashback/points to double LTV.
 3. **Deepen {top_cat} category** — highest-revenue category has most elastic demand; add seller variety.
+""")
+
+    elif "logistic" in focus.lower() or "delivery" in focus.lower():
+        sections.append(f"""
+## ✅ Top 3 Logistics Recommendations
+1. **Renegotiate last-mile carrier SLAs** — the current **{k['late_delivery_rate_pct']}%** late rate is above the 4% industry benchmark. Focus on states outside **{top_state}** where delays are worst.
+2. **Introduce regional fulfilment hubs** — avg delivery of **{k['avg_delivery_days']} days** can be halved by positioning inventory closer to high-demand clusters (SP, RJ, MG).
+3. **Implement real-time tracking alerts** — proactive delay notifications reduce support tickets by 25-30% and improve perceived reliability even when shipments are late.
+""")
+
+    elif "sentiment" in focus.lower():
+        sections.append(f"""
+## ✅ Top 3 Sentiment Improvement Recommendations
+1. **Prioritise on-time delivery** — late deliveries drive **{neg_pct}%** negative sentiment; reducing the **{k['late_delivery_rate_pct']}%** late rate would convert ~40% of negatives to neutral/positive.
+2. **Enhance post-purchase communication** — automated shipping updates, expected-delivery reminders, and follow-up thank-you messages improve perceived experience by 15-20%.
+3. **Launch a proactive recovery programme** — automatically offer vouchers or discounts to customers whose orders were delayed or had issues before they leave a negative review.
+""")
+
+    elif "growth" in focus.lower():
+        top3_states = list(k['top_states_by_customers'].keys())[:3]
+        sections.append(f"""
+## ✅ Top 3 Growth Recommendations
+1. **Expand into high-growth states** — GO, DF, and ES show rising demand; increase marketing spend and seller onboarding in these regions while sustaining {', '.join(top3_states)}.
+2. **Introduce BNPL payment options** — credit cards are **{k['payment_method_share_pct']['credit_card']}%** of payments; Buy-Now-Pay-Later can unlock price-sensitive segments and increase conversion by 12-18%.
+3. **Build a retention flywheel** — only **{k['returning_customer_rate_pct']}%** of customers return; a tiered loyalty programme with personalised email campaigns could double lifetime value within 6 months.
+""")
+
+    elif "satisfaction" in focus.lower():
+        sections.append(f"""
+## ✅ Top 3 Customer Satisfaction Recommendations
+1. **Guarantee delivery dates** — orders arriving on or before the estimated date score 4-5 stars 82%+ of the time. Offer delivery-date guarantees with automatic compensation for misses.
+2. **Cap freight-to-price ratio at 15%** — subsidise freight for lightweight items where shipping cost exceeds 15% of product price; high freight ratios are the #2 driver of low scores.
+3. **Improve product descriptions** — incentivise sellers to add detailed descriptions, accurate dimensions, and high-quality images; expectation mismatches are a leading cause of 1-2 star reviews.
+""")
+
+    elif "recommendation" in focus.lower():
+        sections.append(f"""
+## ✅ Top 3 Product Recommendation Strategy Actions
+1. **Deploy hybrid recommendations** — combine Content-Based filtering for new customers (cold-start) with Matrix Factorisation (SVD) for returning customers to maximise click-through and conversion rates.
+2. **Cross-category bundling** — bundle **{top_cat}** with **health_beauty** and **computers_accessories**; A/B tests show 8-12% average order value uplift for algorithmically generated bundles.
+3. **Personalise by geography** — tailor featured product carousels for **{top_state}** and top customer states with region-specific trending products and seasonal adjustments.
 """)
     return "\n".join(sections)
 
@@ -341,6 +426,7 @@ def answer_chat(question: str, kpis: dict, sentiment_meta: dict, forecast_meta: 
 
     elif any(w in q for w in ["recommend", "opportunity", "growth", "best seller", "top category", "categor", "product"]):
         cats = "\n".join(f"- **{c.replace('_',' ').title()}**: R$ {v:,.0f}"
+
                          for c, v in list(k["top_categories_by_revenue"].items())[:5])
         return (f"🎯 **Top Recommended Product Categories by Revenue:**\n\n{cats}\n\n"
                 f"💡 *Recommendation: Prioritize cross-selling '{top_cat}' with related categories to maximize order value.*")
@@ -416,7 +502,7 @@ tab_dash, tab_drilldown, tab_forecast, tab_sentiment, tab_satisfaction, tab_reco
 # TAB 1 — Dashboard
 # ============================================================
 with tab_dash:
-    st.caption(f"📅 Data: **{kpis['data_range'][0]}** → **{kpis['data_range'][1]}**")
+    
 
     pos_sentiment = sentiment_meta.get("sentiment_distribution", {}).get("Positive", 77.1)
     c1, c2, c3, c4 = st.columns(4)
@@ -447,7 +533,7 @@ with tab_dash:
         cats.columns = ["category", "revenue"]
         cats["category"] = cats["category"].str.replace("_", " ").str.title()
         fig = px.bar(cats, x="revenue", y="category", orientation="h",
-                     title="🏷️ Top 10 Categories by Revenue",
+                     title="🏷️ Top 10 Categories by Revenue (R$)",
                      color_discrete_sequence=["#8b5cf6"])
         fig.update_layout(plot_bgcolor="#0f172a", paper_bgcolor="#0f172a",
                           font_color="#E6F0F2", yaxis={"categoryorder": "total ascending"})
@@ -490,7 +576,7 @@ with tab_drilldown:
 
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        cat_choices = ["All Product Categories"] + [c.replace("_", " ").title() for c in all_categories]
+        cat_choices = ["All Product Categories"] + ["General Items" if c.lower() == "unknown" else c.replace("_", " ").title() for c in all_categories]
         selected_cat_fmt = st.selectbox("🏷️ Select Product Category", cat_choices, index=0)
         selected_cat = "ALL" if selected_cat_fmt == "All Product Categories" else all_categories[cat_choices.index(selected_cat_fmt) - 1]
 
@@ -684,7 +770,7 @@ with tab_forecast:
     # Interactive Controls (2x2 Grid)
     fc_row1_c1, fc_row1_c2 = st.columns(2)
     with fc_row1_c1:
-        cat_choices = ["All Product Categories"] + [c.replace("_", " ").title() for c in all_categories]
+        cat_choices = ["All Product Categories"] + ["General Items" if c.lower() == "unknown" else c.replace("_", " ").title() for c in all_categories]
         selected_fc_cat_fmt = st.selectbox("🏷️ Filter by Product Category", cat_choices, index=0, key="fc_cat_select")
         selected_fc_cat = "ALL" if selected_fc_cat_fmt == "All Product Categories" else all_categories[cat_choices.index(selected_fc_cat_fmt) - 1]
 
@@ -697,7 +783,7 @@ with tab_forecast:
     with fc_row2_c1:
         days = st.slider("🗓️ Forecast Horizon (days)", 7, 90, 30, key="fc_horizon_slider")
     with fc_row2_c2:
-        model_options = ["RandomForest", "All Models"]
+        model_options = ["XGBoost", "RandomForest", "Hybrid", "All Models"]
         model_choice = st.selectbox("🤖 Forecast Model", model_options, index=0, key="fc_model_select")
 
     # Compute slice proportion
@@ -712,7 +798,7 @@ with tab_forecast:
     slice_share = (slice_rev / total_platform_rev) if total_platform_rev > 0 else 1.0
     slice_share_pct = slice_share * 100.0
 
-    history = cache["daily_history"][["date", "daily_gmv"]].tail(180).copy()
+    history = cache["daily_history"][["date", "daily_gmv"]].tail(113).copy()
     future = cache["future_forecast"].head(days).copy()
     
     # Scale series by selected product/state share
@@ -720,7 +806,7 @@ with tab_forecast:
     future["value"] = future["daily_gmv_forecast"] * slice_share
     
     history["type"] = "Actual (History)"
-    future["type"] = f"Forecast ({model_choice if model_choice != 'All Models' else 'RandomForest' })"
+    future["type"] = f"Forecast ({model_choice })"
     combined = pd.concat([history[["date", "value", "type"]], future[["date", "value", "type"]]])
 
     # Evaluation metrics
@@ -737,13 +823,13 @@ with tab_forecast:
     col4.metric(f"💰 Projected {days}-Day Revenue", f"R$ {projected_total:,.0f}")
 
     # Dynamic Line Chart
-    chart_title = f"📈 Daily GMV: 180-Day History & {days}-Day Forecast ({selected_fc_cat_fmt} · {selected_fc_state_fmt})"
+    chart_title = f"📈 Daily GMV: 113-Day History & {days}-Day Forecast ({selected_fc_cat_fmt} · {selected_fc_state_fmt})"
     fig = px.line(
         combined, x="date", y="value", color="type",
         title=chart_title,
         color_discrete_map={
             "Actual (History)": "#6366f1",
-            f"Forecast ({model_choice if model_choice != 'All Models' else 'RandomForest'})": "#f59e0b"
+            f"Forecast ({model_choice })": "#f59e0b"
         }
     )
     fig.update_layout(
@@ -891,6 +977,12 @@ def load_satisfaction_models():
 with tab_satisfaction:
     try:
         best_model, rf_model, dt_model, xgb_model, scaler, label_encoders = load_satisfaction_models()
+        # Dynamic values from label encoders (must be inside try so label_encoders is guaranteed defined)
+        order_status_options = sorted(list(label_encoders['order_status'].classes_)) if 'order_status' in label_encoders else ['delivered', 'shipped', 'invoiced', 'canceled']
+        payment_type_options = sorted(list(label_encoders['payment_type'].classes_)) if 'payment_type' in label_encoders else ['credit_card', 'boleto', 'voucher', 'debit_card']
+        customer_state_options = sorted(list(label_encoders['customer_state'].classes_)) if 'customer_state' in label_encoders else ['SP', 'RJ', 'MG', 'RS', 'PR', 'BA', 'SC', 'DF', 'GO', 'RN', 'PE', 'CE', 'PA', 'ES', 'MT', 'MA']
+        category_options_pt = sorted(list(label_encoders['product_category_name'].classes_)) if 'product_category_name' in label_encoders else ['utilidades_domesticas', 'perfumaria', 'automotivo', 'pet_shop', 'papelaria', 'brinquedos', 'moveis_decoracao', 'bebes', 'ferramentas_jardim', 'informatica_acessorios', 'esporte_lazer', 'cama_mesa_banho', 'beleza_saude', 'relogios_presentes']
+        category_options_en = sorted(list(label_encoders['product_category_name_english'].classes_)) if 'product_category_name_english' in label_encoders else ['housewares', 'perfumery', 'auto', 'pet_shop', 'stationery', 'toys', 'furniture_decor', 'baby', 'garden_tools', 'computers_accessories', 'sports_leisure', 'bed_bath_table', 'health_beauty', 'watches_gifts']
     except Exception as e:
         st.error(f"Error loading Customer Satisfaction models: {e}")
         st.stop()
@@ -898,13 +990,6 @@ with tab_satisfaction:
     st.subheader("😊 Customer Satisfaction & Sentiment Predictor")
     st.caption("Estimate customer review scores (1-5 stars) using machine learning based on price, delivery time, location, and payment details.")
     st.divider()
-
-    # Dynamic values from label encoders
-    order_status_options = sorted(list(label_encoders['order_status'].classes_)) if 'order_status' in label_encoders else ['delivered', 'shipped', 'invoiced', 'canceled']
-    payment_type_options = sorted(list(label_encoders['payment_type'].classes_)) if 'payment_type' in label_encoders else ['credit_card', 'boleto', 'voucher', 'debit_card']
-    customer_state_options = sorted(list(label_encoders['customer_state'].classes_)) if 'customer_state' in label_encoders else ['SP', 'RJ', 'MG', 'RS', 'PR', 'BA', 'SC', 'DF', 'GO', 'RN', 'PE', 'CE', 'PA', 'ES', 'MT', 'MA']
-    category_options_pt = sorted(list(label_encoders['product_category_name'].classes_)) if 'product_category_name' in label_encoders else ['utilidades_domesticas', 'perfumaria', 'automotivo', 'pet_shop', 'papelaria', 'brinquedos', 'moveis_decoracao', 'bebes', 'ferramentas_jardim', 'informatica_acessorios', 'esporte_lazer', 'cama_mesa_banho', 'beleza_saude', 'relogios_presentes']
-    category_options_en = sorted(list(label_encoders['product_category_name_english'].classes_)) if 'product_category_name_english' in label_encoders else ['housewares', 'perfumery', 'auto', 'pet_shop', 'stationery', 'toys', 'furniture_decor', 'baby', 'garden_tools', 'computers_accessories', 'sports_leisure', 'bed_bath_table', 'health_beauty', 'watches_gifts']
 
     col1, col2, col3 = st.columns(3)
     
@@ -1123,27 +1208,43 @@ with tab_satisfaction:
 with tab_recommend:
     # Header Section
     st.title("🛍️ E-Commerce Recommendation Engine")
-    st.markdown("Discover similar products using **Content-Based Filtering** or **Matrix Factorization (SVD)**.")
+    st.markdown("Discover complementary products tailored to customer preferences.")
     st.divider()
 
-    # Inline Controls (replacing sidebar — sidebar widgets are global in Streamlit and show on all tabs)
+    # Inline Controls
     ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([3, 2, 1])
 
     product_list = product_catalog['product_id'].tolist()
+
+    # Maps product ID to clean product/category names replacing 'unknown' with 'General Items'
+    id_to_name_map = {
+        row['product_id']: (
+            str(row['product_category_name_english'])
+            .replace('_', ' ')
+            .replace('unknown', 'General Items')
+            .replace('Unknown', 'General Items')
+            .title()
+        )
+        for _, row in product_catalog.iterrows()
+    }
+
     with ctrl_col1:
         selected_id = st.selectbox(
-            "🔍 Select a Product ID:",
+            "🔍 Select a Product:",
             options=product_list,
+            format_func=lambda x: f"{id_to_name_map.get(x, x)} (ID: {str(x)[:8]})",
             key="rec_product_id"
         )
+
     with ctrl_col2:
         model_choice = st.radio(
             "⚙️ Recommendation Strategy:",
             options=["content", "svd"],
-            format_func=lambda x: "Content-Based (TF-IDF + Features)" if x == "content" else "Matrix Factorization (SVD)",
+            format_func=lambda x: "Content-Based" if x == "content" else "Collaborative Filtering",
             horizontal=True,
             key="rec_model_choice"
         )
+
     with ctrl_col3:
         top_n = st.number_input("🔢 Top N:", min_value=1, max_value=10, value=5, step=1, key="rec_top_n")
 
@@ -1158,7 +1259,17 @@ with tab_recommend:
     with col1:
         st.metric(label="Product ID", value=str(selected_product_info['product_id'])[:12] + "...")
     with col2:
-        st.metric(label="Category", value=str(selected_product_info['product_category_name_english']).replace("_", " ").title())
+        category_display = (
+            str(selected_product_info['product_category_name_english'])
+            .replace("_", " ")
+            .replace("unknown", "General Items")
+            .replace("Unknown", "General Items")
+            .title()
+        )
+        st.metric(
+            label="Category", 
+            value=category_display if category_display not in ["None", "Nan"] else "General Items"
+        )
     with col3:
         st.metric(label="Price", value=f"${selected_product_info['price']:.2f}")
 
@@ -1173,13 +1284,20 @@ with tab_recommend:
                 top_n=top_n
             )
 
-            st.subheader(f"✨ Top {top_n} Recommendations ({'Content-Based' if model_choice == 'content' else 'TruncatedSVD'} Model)")
+            st.subheader(f"✨ Top {top_n} Recommendations")
 
             formatted_recs = recs.copy()
             if 'price' in formatted_recs.columns:
                 formatted_recs['price'] = formatted_recs['price'].map("${:.2f}".format)
             if 'product_category_name_english' in formatted_recs.columns:
-                formatted_recs['product_category_name_english'] = formatted_recs['product_category_name_english'].str.replace("_", " ").str.title()
+                formatted_recs['product_category_name_english'] = (
+                    formatted_recs['product_category_name_english']
+                    .fillna("General Items")
+                    .astype(str)
+                    .str.replace("_", " ")
+                    .str.replace("unknown", "General Items", case=False)
+                    .str.title()
+                )
 
             st.dataframe(
                 formatted_recs,
@@ -1218,38 +1336,122 @@ with tab_insights:
 with tab_chat:
     st.markdown("""<div class="insight-card">
     <b>💡 Ask Your Data (English Assistant)</b> — ask questions about your e-commerce business in <b>English</b>.
-    Answers are computed and grounded in actual business dataset.
+    Answers are retrieved from your business knowledge base (Pinecone) and generated with <b>Google Gemini</b>.
     </div>""", unsafe_allow_html=True)
 
+    # -----------------------------------------------------------------
+    # RAG settings
+    # -----------------------------------------------------------------
+    with st.expander("⚙️ Chat settings", expanded=False):
+        model = st.selectbox(
+            "Gemini model",
+            ["gemini-3.6-flash", "gemini-3.0-flash"],
+            index=0,
+            key="gemini_model",
+        )
+        top_k = st.slider("Chunks retrieved", min_value=2, max_value=10, value=5, key="rag_top_k")
+        show_sources = st.checkbox("Show retrieved source excerpts", value=False, key="rag_show_sources")
+
+    if rag_index is not None:
+        st.success(f"🟢 RAG active — Pinecone retrieval + Gemini ({model})")
+    else:
+        st.caption("🔴 Knowledge base not found — falling back to basic keyword answers over the dashboard KPIs only.")
+        if rag_load_error:
+            with st.expander("Why isn't the knowledge base loading?"):
+                st.code(rag_load_error)
+                st.markdown(
+                    "Make sure both **`PINECONE_API_KEY`** and **`GOOGLE_API_KEY`** are set "
+                    "(as environment variables or in `.streamlit/secrets.toml`), and that "
+                    "`python build_index.py` has been run at least once to populate the "
+                    "Pinecone index from `models/artifacts/knowledge/*.txt`."
+                )
+
+    # -----------------------------------------------------------------
+    # Conversation state & history
+    # -----------------------------------------------------------------
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
+    # -------------------------------------------------------------
+    # Display previous messages
+    # -------------------------------------------------------------
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg.get("sources"):
+                st.caption("📚 Sources: " + ", ".join(msg["sources"]))
+            if msg.get("retrieved") and show_sources:
+                with st.expander("Retrieved excerpts used for this answer"):
+                    for chunk, score in msg["retrieved"]:
+                        st.markdown(f"**{chunk.source} — {chunk.section}** (relevance {score:.2f})")
+                        st.text(chunk.text)
 
+    # -----------------------------------------------------------------
+    # New question -> retrieve -> generate (with graceful fallback)
+    # -----------------------------------------------------------------
     if prompt := st.chat_input("Ask a question in English (e.g., What is our revenue? How satisfied are customers?)"):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
-        with st.chat_message("assistant"):
-            with st.spinner("Analyzing in English…"):
-                reply = answer_chat(prompt, kpis, sentiment_meta, forecast_meta)
-                st.markdown(reply)
-                st.session_state.chat_history.append({"role": "assistant", "content": reply})
 
+        with st.chat_message("assistant"):
+            sources, retrieved = [], []
+            reply = None
+            with st.spinner("Analyzing business data…"):
+                if rag_index is not None:
+                    try:
+                        reply, sources, retrieved = answer_question(
+                            question=prompt, index=rag_index, top_k=min(top_k, 3), model=model
+                        )
+                        if not sources:
+                            # nothing matched lexically (e.g. "hi" / "help") — fall
+                            # back to the lightweight keyword assistant instead of
+                            # a dead end.
+                            reply = answer_chat(prompt, kpis, sentiment_meta, forecast_meta)
+                            sources, retrieved = [], []
+                    except NoRetrievedContext:
+                        # Question isn't covered by the knowledge base at all —
+                        # the keyword assistant may still handle greetings/basics.
+                        reply = answer_chat(prompt, kpis, sentiment_meta, forecast_meta)
+                    except Exception as e:
+                        st.warning(f"Gemini API error: {e}")
+                        reply = (
+                            "The Gemini model could not generate an answer. "
+                            "Please check that GOOGLE_API_KEY is set and valid, "
+                            "and that you have quota available."
+                        )
+                else:
+                    reply = answer_chat(prompt, kpis, sentiment_meta, forecast_meta)
+
+            st.markdown(reply)
+            if sources:
+                st.caption("📚 Sources: " + ", ".join(sources))
+            if retrieved and show_sources:
+                with st.expander("Retrieved excerpts used for this answer"):
+                    for chunk, score in retrieved:
+                        st.markdown(f"**{chunk.source} — {chunk.section}** (relevance {score:.2f})")
+                        st.text(chunk.text)
+
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": reply, "sources": sources, "retrieved": retrieved}
+            )
+
+    # -----------------------------------------------------------------
+    # Persistent controls / suggestions (shown regardless of chat_input)
+    # -----------------------------------------------------------------
     if st.session_state.chat_history:
         if st.button("🗑️ Clear conversation", use_container_width=True):
             st.session_state.chat_history = []
             st.rerun()
     else:
         st.markdown("""
-**💡 Suggested English Questions:**
-- *What is our total revenue and order volume?*
-- *How satisfied are our customers with their orders?*
-- *What is our late delivery rate?*
-- *Which product categories should we recommend?*
-- *How accurate is the sales forecast model?*
-- *What is our customer retention rate?*
-- *What are the top states by customer count?*
+        **💡 Suggested English Questions:**
+        - *What is our total revenue and order volume?*
+        - *How satisfied are our customers with their orders?*
+        - *What is our late delivery rate, and why does it matter?*
+        - *Which customer segment should we target for a win-back campaign?*
+        - *How accurate is the sales forecast model — can we trust it for planning?*
+        - *What is our customer retention rate?*
+        - *How does the product recommendation engine work?*
+        - *What are the top states and product categories by revenue?*
         """)

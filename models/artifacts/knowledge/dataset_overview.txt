@@ -1,0 +1,73 @@
+DATASET OVERVIEW
+================================================================
+Source: Olist Brazilian E-Commerce dataset (olist_master_dataset.csv),
+a merged order/customer/product/payment/review table used to power the
+AI-Powered E-Commerce Analytics Platform (dashboards, forecasting,
+sentiment analysis, recommendations, and the GenAI insights/chat layer).
+
+RAW SHAPE
+- Rows: 119,143 (order-item level rows; one row per item within an order)
+- Columns: 37
+- Unique orders: 99,441
+- Unique customers (customer_unique_id): 96,096
+- Unique sellers: 3,095
+- Unique products: 32,951
+- Product categories (Portuguese, product_category_name): 73
+- Product categories (English, product_category_name_english): 71
+- Date range: order_purchase_timestamp spans 2016-09-04 to 2018-10-17
+  (bulk of volume is Jan 2017 - Aug 2018; Sept/Oct 2016 and Sept/Oct 2018
+  are partial/sparse months and are typically excluded from trend charts)
+
+KEY COLUMNS
+- Identifiers: order_id, customer_id, customer_unique_id, product_id, seller_id, review_id
+- Order lifecycle timestamps: order_purchase_timestamp, order_approved_at,
+  order_delivered_carrier_date, order_delivered_customer_date,
+  order_estimated_delivery_date, shipping_limit_date
+- Order status (8 values): delivered, shipped, canceled, unavailable,
+  invoiced, processing, created, approved
+- Customer: customer_zip_code_prefix, customer_city, customer_state
+- Item/product: order_item_id, price, freight_value, product_category_name,
+  product_category_name_english, product_name_lenght, product_description_lenght,
+  product_photos_qty, product_weight_g, product_length_cm, product_height_cm,
+  product_width_cm
+- Payment: payment_sequential, payment_type, payment_installments, payment_value
+- Review: review_id, review_score (1-5), review_comment_title,
+  review_comment_message, review_creation_date, review_answer_timestamp
+
+MISSING DATA (raw)
+- order_approved_at: 177 missing
+- order_delivered_carrier_date: 2,086 missing
+- order_delivered_customer_date: 3,421 missing (undelivered/canceled orders)
+- order_item_id/product_id/seller_id/price/freight_value: 833 missing (~0.7%)
+- product_category_name and derived product text-length fields: ~2,542 missing
+- payment columns: 3 missing
+- review fields: ~997 missing (no review left)
+- review_comment_title: 13,989 populated (rest filled "No Title")
+- review_comment_message: 50,245 populated (rest filled "No Review")
+
+ENGINEERED FEATURES USED DOWNSTREAM
+- delivery_days = order_delivered_customer_date - order_purchase_timestamp
+- delivery_vs_estimated / delivery_delay = order_estimated_delivery_date - actual delivery
+- delivery_status: "Late" if delivery_delay > 0, else "On Time" (or "Not Delivered Yet")
+- approval_hours / approval_time_hours = order_approved_at - order_purchase_timestamp (hours)
+- carrier_pickup_days, transit_days (seller/carrier handoff timing)
+- total_item_value = price + freight_value; freight_pct = freight_value / price * 100
+- volume_cm3, weight_kg, size_category (Small/Medium/Large/Extra Large)
+- is_multi_item, is_multi_seller, items_per_order (order-level aggregates)
+- payment_methods_per_order, is_multi_payment, is_installment, installment_value
+- sentiment (Positive/Neutral/Negative) derived from review_score
+  (>=4 Positive, ==3 Neutral, <=2 Negative)
+- has_comment, comment_length, review_text (title + message concatenated)
+- RFM fields: recency_days, frequency, monetary, R/F/M scores (1-5, quintile-based),
+  RFM_score, segment (Champions / Loyal / At Risk / Lost)
+- is_returning_customer (frequency > 1)
+
+DOWNSTREAM MODULES THIS DATASET FEEDS
+1. Sales/Revenue KPI dashboard (generate_kpis.py)
+2. Category x State drill-down explorer (generate_product_state_analytics.py)
+3. Sales/GMV forecasting (train_forecasting.py -> daily GMV panel, 7 models compared)
+4. Review-score / customer satisfaction classifier (RF/DT/XGBoost on 23 features)
+5. Text-based sentiment analysis (TF-IDF+LogReg baseline and BERTimbau transformer)
+6. Product recommendation engine (content-based KNN + SVD/matrix-factorization KNN)
+7. GenAI insights layer / chatbot that answers natural-language questions grounded
+   in the KPI, drill-down, forecast, and sentiment artifacts produced above

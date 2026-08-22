@@ -1,0 +1,52 @@
+PRODUCT ANALYSIS
+================================================================
+Source: EDA on the Olist product/order-item data (73 Portuguese / 71
+English product categories, 32,951 unique products, 118,310 item rows
+with a price).
+
+CATALOG SIZE & PRICING
+- Median item price: ~R$74.90 (mean R$120.65, heavily right-skewed;
+  max single item price R$6,735)
+- Median freight value: ~R$16.28 (mean R$20.03, max R$409.68)
+- Freight as % of price: median ~23%, mean ~32%; for cheap items freight
+  can exceed 100% of the item price
+- Correlation between price and freight_value: 0.416 (weak-moderate;
+  freight is driven more by weight/size/distance than by price)
+- Correlation between product weight (kg) and average freight cost: 0.662
+  (strong) — weight is the key freight driver and a useful feature for a
+  delivery-cost prediction model
+
+CATEGORY LEADERBOARD (by revenue) — see sales_kpis.txt for exact figures.
+Consistently top categories across revenue and order-volume views:
+bed_bath_table, health_beauty, computers_accessories, furniture_decor,
+watches_gifts, sports_leisure, housewares, auto, garden_tools.
+Top 20% of products account for roughly 80%+ of total revenue
+(classic long-tail / Pareto pattern).
+
+ORDER COMPOSITION
+- ~90% of orders are single-item orders; multi-item and multi-seller
+  orders are a minority — this shapes the recommendation engine's
+  cross-sell opportunity (most customers only see/buy one product per visit).
+- Item counts per order drop off sharply after 1-2 items (countplot capped
+  at <=6 items for readability).
+
+PRODUCT SIZE / LOGISTICS
+- volume_cm3 = length x height x width; size_category buckets:
+  Small (<=1,000 cm3), Medium (1,000-10,000), Large (10,000-50,000),
+  Extra Large (>50,000)
+- Product weight is the strongest available predictor of freight cost
+  (r ≈ 0.66), stronger than price (r ≈ 0.42).
+
+CANCELLATIONS BY CATEGORY (top cancelled categories, order counts)
+housewares (59), sports_leisure (52), computers_accessories (46),
+health_beauty (40), furniture_decor (38), toys (34), auto (32),
+watches_gifts (21), baby (20), garden_tools (20).
+These roughly track the highest-volume categories, i.e. cancellations
+scale with order volume rather than pointing to one particular
+problem category.
+
+FEATURE IMPORTANCE (from the review-score/satisfaction model — see
+customer_analysis.txt / sentiment_analysis.txt): product_description_lenght
+and product_name_lenght rank in the top 10 most predictive features for
+review score, alongside delivery and payment features — better product
+copy is associated with better outcomes, not just logistics.

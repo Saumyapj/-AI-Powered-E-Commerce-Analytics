@@ -4,6 +4,7 @@
     "2016-09-04",
     "2018-10-17"
   ],
+
   "total_revenue": 20579988.49,
   "total_orders": 99441,
   "total_customers": 96096,
@@ -15,6 +16,7 @@
   "avg_delivery_days": 12.02,
   "avg_review_score": 4.02,
   "returning_customer_rate_pct": 7.33,
+  
   "top_states_by_customers": {
     "SP": 50265,
     "RJ": 15518,

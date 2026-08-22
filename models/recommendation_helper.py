@@ -1,55 +1,57 @@
-import joblib
-import pandas as pd
-import json
-import sys
 import os
-from pathlib import Path
+import joblib
+import numpy as np
+import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
 
-from utils.data_pipeline import load_and_clean
+def get_recommendations(
+    product_id,
+    model_type="content",
+    top_n=5,
+    product_catalog=None,
+    nn_content=None,
+    combined_features=None,
+    nn_svd=None,
+    latent_matrix=None,
+):
+    if product_catalog is None or product_id not in product_catalog['product_id'].values:
+        return pd.DataFrame()
 
-DATA_PATH = ROOT / "data" / "olist_master_dataset.csv"
-ARTIFACTS = ROOT / "models" / "artifacts"
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    # Get integer position index regardless of custom index
+    idx = product_catalog.index[product_catalog['product_id'] == product_id][0]
 
-# Load artifacts directly from the models subfolder
-product_catalog = joblib.load(os.path.join(ARTIFACTS, "product_catalog.pkl"))
-knn_content = joblib.load(os.path.join(ARTIFACTS, "knn_content_model.pkl"))
-combined_features = joblib.load(os.path.join(ARTIFACTS, "combined_features.pkl"))
-knn_svd = joblib.load(os.path.join(ARTIFACTS, "knn_svd_model.pkl"))
-latent_matrix = joblib.load(os.path.join(ARTIFACTS, "latent_matrix.pkl"))
+    if model_type == "content":
+        model = nn_content
+        feature_matrix = combined_features
+        query_vec = feature_matrix[idx]
+    else:  # SVD
+        model = nn_svd
+        feature_matrix = latent_matrix
+        query_vec = (
+            feature_matrix[idx].reshape(1, -1)
+            if hasattr(feature_matrix[idx], 'reshape')
+            else feature_matrix[idx]
+        )
 
-def get_recommendations(product_id: str, model_type: str = "content", top_n: int = 5):
-    """
-    Returns top_n recommended products for a given product_id.
-    model_type options: 'content' or 'svd'
-    """
-    if product_id not in product_catalog['product_id'].values:
-        return None
-    
-    idx = product_catalog[product_catalog['product_id'] == product_id].index[0]
-    
-    if model_type == "svd":
-        model = knn_svd
-        matrix = latent_matrix
-    else:
-        model = knn_content
-        matrix = combined_features
-    
-    distances, indices = model.kneighbors(matrix[idx], n_neighbors=top_n + 1)
+    # Ensure query_vec is 2D array
+    if hasattr(query_vec, 'ndim') and query_vec.ndim == 1:
+        query_vec = query_vec.reshape(1, -1)
+
+    distances, indices = model.kneighbors(query_vec, n_neighbors=top_n + 1)
+
     rec_indices = indices[0][1:]
-    
-    recs = product_catalog.iloc[rec_indices][
+    rec_distances = distances[0][1:]
+
+    res = product_catalog.iloc[rec_indices][
         ['product_id', 'product_category_name_english', 'price', 'review_score']
     ].copy()
-    
-    recs['similarity_score'] = [round(float(1 - d), 4) for d in distances[0][1:]]
-    return recs
 
-# Quick local test
-if __name__ == "__main__":
-    sample_id = product_catalog['product_id'].iloc[0]
-    print(f"Testing recommendations for Product: {sample_id}\n")
-    print(get_recommendations(sample_id, model_type="content"))
+    # Normalize similarity score based on metric type
+    metric = getattr(model, 'metric', 'minkowski')
+    if metric == 'cosine':
+        similarity = 1 - rec_distances
+    else:
+        similarity = 1 / (1 + rec_distances)
+
+    res['similarity_score'] = np.round(similarity, 4)
+    return res
