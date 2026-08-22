@@ -1,0 +1,56 @@
+DELIVERY & LOGISTICS ANALYSIS
+================================================================
+Derived fields: delivery_days (purchase -> customer delivery),
+estimated_delivery_days (purchase -> estimated delivery date),
+delivery_delay (actual delivery date - estimated delivery date, days),
+delivery_status ("Late" if delivery_delay > 0, "On Time" otherwise,
+"Not Delivered Yet" if order_delivered_customer_date is null),
+carrier_pickup_days (approval -> carrier handoff), transit_days
+(carrier handoff -> customer delivery), approval_time_hours
+(purchase -> payment approval, in hours).
+
+HEADLINE LOGISTICS FACTS
+- Median actual delivery time across Brazil: ~10-12 days.
+- Median/typical estimated delivery window: ~25+ days — Olist sets
+  estimates conservatively (roughly 11 days earlier than promised on
+  average), which protects the "on time" rate but understates real
+  performance to customers.
+- "Late" tail: roughly 7-10% of deliveries are categorized as Late by
+  delivery_delay. Any positive delay value correlates directly with an
+  immediate drop in customer review ratings.
+- 8% of orders are late overall; late orders average ~2.2 stars vs ~4.3
+  stars for on-time orders — delivery timing is one of the strongest
+  single drivers of customer satisfaction in the dataset.
+
+DELIVERY TIME vs REVIEW SCORE (avg delivery_days by review_score)
+- 1-star reviews: 19.10 days average delivery
+- 2-star reviews: 15.38 days
+- 3-star reviews: 13.55 days
+- 4-star reviews: 11.78 days
+- 5-star reviews: 10.20 days
+Delivery speed decreases monotonically as review score increases — this
+is one of the clearest linear relationships found in the EDA and is a
+top feature in both the review-score classifier and the sentiment model.
+
+SELLER FULFILLMENT
+- seller_shipping_margin = shipping_limit_date - order_delivered_carrier_date.
+  Orders with a comfortable margin (>2 days before the shipping deadline)
+  are associated with a 90-day repeat purchase rate 2.4x higher than
+  orders where the seller dispatched late — seller-side speed has a
+  measurable downstream effect on customer retention, not just the
+  single order's review.
+
+FREIGHT / SHIPPING COST DRIVERS
+- Weight (kg) vs average freight: correlation ≈ 0.66 (strong) — the
+  single best available predictor of shipping cost.
+- Price vs freight: correlation ≈ 0.42 (weaker) — freight is driven more
+  by physical size/weight/distance than by item value.
+- Freight can exceed 100% of item price for cheap, bulky items —
+  relevant for margin/pricing decisions on low-cost SKUs.
+
+FEATURES USED IN DOWNSTREAM MODELS
+delivery_days, delivery_vs_estimated (or delivery_delay), and
+approval_hours are all top-10 most predictive features in the customer
+satisfaction/review-score classifier (see customer_analysis.txt /
+sentiment_analysis.txt) — delivery_vs_estimated and delivery_days rank
+#1 and #2 by importance in the Random Forest satisfaction model.

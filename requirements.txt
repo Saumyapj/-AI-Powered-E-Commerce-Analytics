@@ -1,3 +1,4 @@
+# --- Dashboard ---
 streamlit>=1.28.0
 pandas>=1.5.0
 numpy>=1.23.0
@@ -6,3 +7,14 @@ scikit-learn>=1.2.0
 joblib>=1.2.0
 xgboost>=1.7.0
 openpyxl>=3.1.0
+
+# --- RAG / LLM stack ---
+python-dotenv
+langchain-community
+langchain-text-splitters
+langchain-google-genai
+langchain-pinecone
+langchain-core
+pinecone
+sentence-transformers
+torchvision  # transformers' import-time vision-model registry needs this present, even though we only do text embeddings

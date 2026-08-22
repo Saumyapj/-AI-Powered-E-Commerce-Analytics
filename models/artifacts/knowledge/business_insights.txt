@@ -1,0 +1,96 @@
+CROSS-CUTTING BUSINESS INSIGHTS
+================================================================
+Synthesized "so what" findings that tie the KPI, product, customer,
+delivery, sentiment, forecasting, and recommendation analyses together.
+This is the primary grounding file for executive summaries and the
+GenAI chatbot's "what should we do" style questions.
+
+TOP 10 EDA INSIGHTS (from the master notebook's summary table)
+1. ~8% of orders are late; late orders average ~2.2 stars vs ~4.3 stars
+   on time -> feeds delay prediction and sentiment modeling.
+2. Median delivery is ~10-12 days, but estimated delivery windows are
+   conservatively set ~11 days later than typical actual delivery
+   -> feeds the logistics dashboard; there's room to tighten promised
+   delivery dates without hurting on-time rate, which could raise
+   customer trust/perceived speed.
+3. Peak ordering happens Monday-Wednesday, 10:00-16:00 -> feeds sales-
+   forecasting calendar features and staffing/inventory planning.
+4. ~90% of orders are single-item -> the recommendation engine is the
+   main cross-sell lever available (see recommendation_results.txt).
+5. Only ~3.1% of customers are repeat buyers -> retention/re-engagement
+   is flagged as the single biggest growth opportunity (see
+   customer_analysis.txt for RFM segment sizing).
+6. Credit card is ~74% of payment revenue; ~50% of orders use
+   installments -> payment financing options are core to purchase
+   behavior, not a marginal feature.
+7. Top 20% of products generate 80%+ of revenue (Pareto pattern)
+   -> concentration risk if top SKUs go out of stock or get delisted;
+   also focuses which products matter most for review-score and
+   forecasting accuracy.
+8. Product weight strongly drives freight cost (r ≈ 0.66) -> useful for
+   freight-cost prediction and packaging/logistics optimization.
+9. Negative reviews are longer and more frequent commenters than
+   positive ones -> justifies investing in transformer-based (BERTimbau)
+   sentiment/complaint mining over review text, not just star ratings.
+10. SP/RJ/MG dominate both revenue and customer count -> geographic
+    concentration should inform regional logistics/warehouse strategy.
+
+REVENUE CONCENTRATION RISK
+- SP alone is ~38% of total revenue; SP+RJ+MG together dominate.
+- Top 10 product categories (of 71) generate roughly 60%+ of total
+  category revenue.
+Both patterns mean the business is exposed to concentration risk (a
+single state's economic conditions or a handful of categories'
+performance can swing headline KPIs) — worth flagging when reporting
+"strong" revenue growth, since it may be driven by a narrow base.
+
+CUSTOMER LIFECYCLE STORY
+Retention (3.1% repeat rate) is the biggest gap versus acquisition. RFM
+segmentation shows Loyal + Champions customers (57% of the base) drive
+~77% of revenue, while "At Risk" customers (34% of the base, avg spend
+R$127) represent the largest addressable win-back opportunity by sheer
+count. Combined with the finding that on-time seller dispatch correlates
+with a 2.4x higher 90-day repeat-purchase rate, a natural high-leverage
+recommendation is: tighten seller SLA/dispatch performance first (it's
+operationally controllable and has a measured link to repeat purchases),
+then layer targeted win-back campaigns for At-Risk RFM segments.
+
+DELIVERY IS THE #1 CONTROLLABLE SATISFACTION LEVER
+Across independent analyses (EDA correlation, the review-score
+classifier's feature importances, and the sentiment comment-length
+finding), delivery timing surfaces as the top or near-top driver of
+customer satisfaction every time:
+- delivery_vs_estimated and delivery_days are the #1 and #2 most
+  important features in the Random Forest review-score classifier
+  (86.69% test accuracy).
+- Average delivery time drops monotonically from 19.1 days (1-star) to
+  10.2 days (5-star) reviews.
+- Late orders average ~2.2 stars vs ~4.3 for on-time.
+This convergence across three independently trained models/analyses
+makes "reduce delivery delay/variance" the platform's highest-confidence
+lever for improving customer satisfaction and, transitively, repeat
+purchase rate.
+
+FORECASTING RELIABILITY CAVEAT
+The best sales-forecasting models (XGBoost/RandomForest) explain only
+~37-38% of daily GMV variance (R2 ≈ 0.37) on the holdout, with ~21%
+weighted absolute percentage error. Forecasts should be presented as
+directional/trend guidance (and are notably useful for Black Friday /
+holiday season magnitude estimates) rather than precise day-level
+revenue commitments. Classical models (Prophet, ARIMA, LSTM) performed
+worse than the tree-based models and are not recommended as the primary
+forecast source for this dataset.
+
+MODEL PORTFOLIO SUMMARY (which model answers which question)
+- "How happy are our customers overall / by category / by state?"
+  -> sentiment_analysis.txt (BERTimbau text sentiment, 85.84% accuracy;
+     or the structured review-score classifier, 86.69% accuracy)
+- "What will revenue look like next quarter / around Black Friday?"
+  -> forecasting_results.txt (XGBoost/RandomForest, R2 ≈ 0.37-0.38)
+- "What should we recommend to a customer viewing product X?"
+  -> recommendation_results.txt (content-based KNN or SVD-based KNN)
+- "Where is revenue/growth concentrated and who are our best customers?"
+  -> sales_kpis.txt + customer_analysis.txt (RFM segmentation)
+- "Why is a specific order/customer/product underperforming?"
+  -> delivery_analysis.txt + product_analysis.txt (delivery delay,
+     freight cost, category-level patterns)

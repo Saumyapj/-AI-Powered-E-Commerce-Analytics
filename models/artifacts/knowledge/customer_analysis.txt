@@ -1,0 +1,59 @@
+CUSTOMER ANALYSIS (RFM & SEGMENTATION)
+================================================================
+Built with a classic RFM (Recency, Frequency, Monetary) model on
+customer_unique_id, snapshot date = max(order_purchase_timestamp) + 1 day.
+
+BASE STATS (96,096 unique customers)
+- Mean recency: 288.7 days since last purchase (std 153.4)
+- Mean frequency: 1.03 orders/customer (median 1, max 17)
+- Mean monetary value: R$214.16 (median R$113.34, max R$109,312.64)
+- Mean average order value: R$206.07
+
+REPEAT PURCHASE RATE
+- Only 3.1% of customers made more than one purchase (is_repeat_customer).
+- This is the single biggest flagged business opportunity in the whole
+  EDA: retention/re-engagement, not acquisition, is where the platform
+  recommends focusing.
+
+RFM SCORING & SEGMENTS
+R, F, M each scored 1-5 via quintiles; RFM_score = R+F+M; segment rules:
+- RFM_score >= 12: "Champions"
+- RFM_score >= 9: "Loyal"
+- RFM_score >= 6: "At Risk"
+- else: "Lost"
+
+Segment summary (customers, avg monetary, total revenue):
+- Loyal: 39,125 customers, avg R$234.96, total revenue R$9,192,893.60
+- Champions: 15,988 customers, avg R$421.31, total revenue R$6,735,977.02
+- At Risk: 32,917 customers, avg R$127.25, total revenue R$4,188,725.64
+- Lost: 8,066 customers, avg R$57.29, total revenue R$462,067.75
+
+Interpretation: Loyal + Champions (55,113 customers, ~57% of the base)
+generate about R$15.9M, roughly 77% of total revenue, even though
+Champions alone are only ~17% of customers — a small high-value segment
+drives a disproportionate share of revenue and is the natural target for
+loyalty/VIP programs. At Risk customers are a large group (34% of
+customers) with meaningfully lower average spend — a natural
+re-engagement/win-back campaign target.
+
+GEOGRAPHY
+- Customer counts are concentrated in SP, RJ, MG (see sales_kpis.txt for
+  revenue-by-state figures — the same three states dominate both revenue
+  and customer count).
+- Top cities by customer count: São Paulo (18,875), Rio de Janeiro (8,311),
+  Belo Horizonte (3,299), Brasília (2,500), Curitiba (1,827), Campinas
+  (1,757), Porto Alegre (1,675), Salvador (1,544), Guarulhos (1,415),
+  São Bernardo do Campo (1,131).
+
+SELLER-SIDE INSIGHT LINKED TO CUSTOMER BEHAVIOR
+Orders dispatched with a high margin of safety (seller_shipping_margin
+> 2 days, i.e. sellers ship well ahead of their shipping_limit_date)
+achieve a 90-day repeat purchase rate 2.4x higher than orders where the
+seller's dispatch was delayed — seller fulfillment speed is strongly
+linked to whether a customer comes back.
+
+DOWNSTREAM USE
+RFM/segment fields (rfm.pkl) feed the customer-segmentation views in the
+dashboard and are a natural grounding source for the GenAI insights layer
+when answering questions like "who are our most valuable customers" or
+"which segment should we target for a win-back campaign."

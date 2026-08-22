@@ -1,0 +1,103 @@
+SALES / GMV FORECASTING RESULTS
+================================================================
+Goal: forecast daily Gross Merchandise Value (GMV = daily payment_value)
+so the platform can answer "what will revenue look like over the next
+90 days," including around Black Friday and the December holiday season.
+
+PIPELINE
+1. Encode seasonal + category/state features (SalesFeatureEncoder).
+2. Aggregate the 119,143 order-item rows into a DAILY GMV PANEL
+   (TSAggregator) — one row per calendar day of revenue.
+3. Engineer lag features (lag_1, lag_2, lag_3, lag_7, lag_14, lag_21,
+   lag_30) and rolling-window stats (roll_mean/roll_std over 7/14/30
+   days) plus calendar features (dayofweek, week, month, dayofyear,
+   quarter, year, is_weekend, is_black_friday, is_holiday_season) and
+   Fourier/cyclic encodings (sin/cos of dayofweek, week, month, dayofyear).
+4. IMPORTANT DESIGN CHOICE: only features genuinely knowable in advance
+   (lags/rolling stats of the target + calendar signals) are used.
+   Same-day aggregates like order_volume, shipping_revenue, or
+   category/state mix-shares are themselves outputs of that day's orders
+   and would leak information a real forecast wouldn't have — these are
+   deliberately excluded from FEATURE_COLS.
+5. Train/test split: last 30 days (train_forecasting.py) or a 113-day
+   holdout (exploratory notebook) held out chronologically — no shuffling
+   (TimeSeriesSplit used for CV during tuning).
+
+MODEL COMPARISON (113-day holdout, ranked by RMSE — from the exploratory
+notebook; lower WAPE/SMAPE/MAE/RMSLE/RMSE and higher R2 = better)
+Rank  Model         WAPE%   SMAPE%   MAE       RMSLE   RMSE       R2
+1     XGBoost       21.06   21.26    9,750.13  0.26    12,766.63  0.3753
+2     RandomForest  21.42   21.94    9,915.67  0.27    12,781.79  0.3739
+3     LightGBM      22.76   23.45    10,534.99 0.30    13,445.02  0.3072
+4     Hybrid*       24.91   25.81    11,529.76 0.34    14,294.80  0.2168
+5     Prophet       29.27   29.42    13,549.21 0.40    16,561.97  -0.0513
+6     ARIMA         29.34   29.81    13,582.24 0.39    16,620.33  -0.0587
+7     LSTM          29.65   30.07    13,725.60 0.40    16,782.65  -0.0795
+*Hybrid = weighted blend, e.g. 0.40*Prophet + 0.30*LSTM + 0.30*XGBoost
+(weights vary by script; train_forecasting.py's HybridForecaster uses a
+60% HistGradientBoosting / 40% Fourier-Ridge blend instead).
+
+TAKEAWAYS
+- Tree-based gradient boosting models (XGBoost, RandomForest, LightGBM)
+  clearly beat classical time-series methods (Prophet, ARIMA) and a
+  simple LSTM on this daily GMV series — the engineered lag/rolling/
+  calendar features give trees enough signal to outperform models that
+  rely mostly on trend/seasonality decomposition.
+- XGBoost and RandomForest are close (WAPE 21.06% vs 21.42%, R2 0.375
+  vs 0.374) — either is a defensible production choice; XGBoost is
+  marginally best on the holdout, RandomForest wins on the sample
+  91-day out-of-sample retrain-and-run comparison in train_forecasting.py.
+- Prophet/ARIMA/LSTM all post negative R2 on this holdout, meaning they
+  perform worse than simply predicting the mean daily GMV — daily GMV
+  for this dataset is noisy/spiky (promotions, Black Friday) in a way
+  classical decomposition methods don't capture well without more
+  exogenous regressors.
+- R2 in the 0.31-0.38 range for the best models indicates daily GMV
+  is genuinely hard to forecast precisely from calendar + lag features
+  alone — useful for trend/magnitude, less reliable for exact day-level
+  numbers, and should be communicated with that caveat.
+
+HYPERPARAMETER TUNING (XGBoost)
+RandomizedSearchCV, 50 candidates, TimeSeriesSplit(n_splits=3),
+scoring='neg_mean_absolute_error'. Best params found: subsample=0.6,
+reg_lambda=1.5, reg_alpha=10, n_estimators=400, min_child_weight=1,
+max_depth=3, learning_rate=0.08, gamma=0.5, colsample_bytree=0.9
+(best CV score: MAE ≈ 9,418.74).
+Counter-intuitive result: the TUNED XGBoost performed WORSE than the
+default/untuned XGBoost on the actual holdout — e.g. on the last 5 test
+days, untuned XGBoost error ranged from -9.7% to -41.0% vs tuned
+XGBoost's -4.7% to -33.1% (mixed, but on balance the notebook concludes
+"normal XGBoost model is predicting better than the tuned one" for this
+particular holdout window). This is flagged explicitly as a real
+finding, not a bug — cross-validated MAE improvement did not translate
+to holdout improvement here, likely because the randomized search
+optimized a shallower/more regularized tree (max_depth 3, high L1
+penalty reg_alpha=10) that generalizes to typical days but under-reacts
+to the extreme demand spikes (Black Friday, promo days) that dominate
+this particular holdout window.
+
+FEATURE IMPORTANCE (XGBoost)
+Lag features (especially recent lags: lag_1, lag_7) and rolling means
+dominate feature importance, alongside calendar signals — see the
+"Top 15 Predictive Feature Importances" chart in the notebook for the
+full ranking.
+
+PRODUCTION ARTIFACTS (models/artifacts/, written by train_forecasting.py)
+- trained_forecasting_models.pkl — dict of all trained models
+  (RandomForest, LGBM at minimum; Hybrid commented out in current script)
+- best_forecasting_model.pkl — winning model retrained on FULL history
+- daily_gmv_history.csv — the daily GMV panel used for training
+- future_forecast_90d.csv — 90-day-ahead forecast, generated by
+  iteratively rolling forward day-by-day and regenerating lag/rolling
+  features from prior actual + predicted daily_gmv values (so later days
+  in the 90-day horizon are increasingly dependent on the model's own
+  earlier predictions)
+- forecasting_metadata.json — best_model name, trained_at timestamp,
+  history date range, evaluation metrics, and the exact feature_cols list
+
+BLACK FRIDAY / HOLIDAY SEASON
+is_black_friday (November, day >= 22) and is_holiday_season (December,
+day <= 24) are explicit binary flags carried through both training and
+the 90-day future forecast, so the dashboard can specifically show
+projected Black Friday and December holiday GMV uplifts across all
+compared models.
