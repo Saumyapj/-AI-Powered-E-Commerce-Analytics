@@ -994,7 +994,7 @@ with tab_sentiment:
         return ""
 
     st.dataframe(
-        _bench_df.style.applymap(_highlight_delta, subset=["Delta (BERT − TF-IDF)"]),
+        _bench_df.style.map(_highlight_delta, subset=["Delta (BERT − TF-IDF)"]),
         use_container_width=True,
         hide_index=True,
     )
