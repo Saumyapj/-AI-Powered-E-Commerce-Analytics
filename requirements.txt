@@ -8,6 +8,10 @@ joblib>=1.2.0
 xgboost>=1.7.0
 openpyxl>=3.1.0
 
+# --- NLP / Transformers (BERTimbau Portuguese BERT) ---
+torch>=2.0.0
+transformers>=4.30.0
+
 # --- RAG / LLM stack ---
 python-dotenv
 langchain-community

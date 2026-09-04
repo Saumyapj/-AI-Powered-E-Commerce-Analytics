@@ -79,8 +79,8 @@ class TSAggregator:
             if col.startswith("cat_") or col.startswith("state_"):
                 agg_rules[col] = "mean"
 
-        daily = valid.groupby("date", as_index=False).agg(agg_rules)
-        daily = daily.rename(columns={
+        daily_ts = valid.groupby("date", as_index=False).agg(agg_rules)
+        daily_ts = daily_ts.rename(columns={
             "payment_value": "daily_gmv",
             "total_item_value": "daily_item_revenue",
             "freight_value": "shipping_revenue",
@@ -90,12 +90,20 @@ class TSAggregator:
             "payment_installments": "avg_installments",
             "is_installment": "is_installment_rate",
         })
-        daily["date"] = pd.to_datetime(daily["date"])
-        daily = daily.sort_values("date").reset_index(drop=True)
+        # 6. Convert date back to datetime for chronological sorting & calendar extraction
+        daily_ts['date'] = pd.to_datetime(daily_ts['date'])
+        daily_ts = daily_ts.sort_values('date').reset_index(drop=True)
+        print(f"Before trim: {len(daily_ts)} days, ending {daily_ts['date'].max().date()}")
+        TRIM_DAYS = 20  # ~90th percentile of order delivery time (median 10, 75th pct 15, 95th pct 29)
+        cutoff_date = daily_ts['date'].max() - pd.Timedelta(days=TRIM_DAYS)
+        daily_ts = daily_ts[daily_ts['date'] <= cutoff_date].reset_index(drop=True)
+        print(f"After trim:  {len(daily_ts)} days, ending {daily_ts['date'].max().date()} "
+        f"(dropped the {TRIM_DAYS} days after that as right-censored).")
 
-        daily["is_black_friday"] = ((daily["month"] == 11) & (daily["date"].dt.day >= 22)).astype(int)
-        daily["is_holiday_season"] = ((daily["month"] == 12) & (daily["date"].dt.day <= 24)).astype(int)
-        return daily
+        daily_ts["is_black_friday"] = ((daily_ts["month"] == 11) & (daily_ts["date"].dt.day >= 22)).astype(int)
+        daily_ts["is_holiday_season"] = ((daily_ts["month"] == 12) & (daily_ts["date"].dt.day <= 24)).astype(int)
+        daily_ts = daily_ts.drop( columns=['daily_item_revenue', 'shipping_revenue', 'order_volume'])   
+        return daily_ts
 
 
 class TSFeatureEngineer:

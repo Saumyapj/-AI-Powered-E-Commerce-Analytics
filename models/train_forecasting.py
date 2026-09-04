@@ -10,12 +10,11 @@ import json
 import sys
 import time
 from pathlib import Path
-
 import joblib
-from lightgbm import LGBMRegressor
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor, LGBMRegressor 
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.data_pipeline import load_and_clean
@@ -50,11 +49,10 @@ def main():
     df_features = TSFeatureEngineer.engineer_features(daily_ts, target_col="daily_gmv")
     print(f"    Supervised matrix shape: {df_features.shape}")
 
-    test_days = 30
-    train_df = df_features.iloc[:-test_days].copy()
-    test_df = df_features.iloc[-test_days:].copy()
-
-    # NOTE: restrict to features that are genuinely knowable ahead of time
+    split_ratio = 0.8
+    split_idx = int(len(df_features) * split_ratio)
+    train_df = df_features.iloc[:split_idx].copy()
+    test_df = df_features.iloc[split_idx:].copy()    # NOTE: restrict to features that are genuinely knowable ahead of time
     # (lags/rolling stats of the target + calendar signals). Same-day
     # aggregates like order_volume, shipping_revenue, or category/state
     # mix-shares are themselves outputs of that day's orders and would leak
@@ -77,24 +75,27 @@ def main():
     trained_models["RandomForest"] = rf
     print(f"    done in {time.time()-t0:.1f}s -> {results[-1]}")
 
-    print("\n[5] Training LGBM...")
+    print("\n[5] Training XGBoost...")
     t0 = time.time()
-    lgbm_model = LGBMRegressor(n_estimators=500,learning_rate=0.05,force_row_wise='true',
-                                random_state=42  )
-    lgbm_model.fit(X_train, y_train)
-    lgbm_pred = lgbm_model.predict(X_test)
-    results.append(evaluate(y_test, lgbm_pred, "LGBM"))
-    trained_models["LGBM"] = lgbm_model
+    xgb_model = XGBRegressor(n_estimators=500, learning_rate=0.05,
+        max_depth=5,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42)
+    xgb_model.fit(X_train, y_train)
+    xgb_pred = xgb_model.predict(X_test)
+    results.append(evaluate(y_test, xgb_pred, "XGBoost"))
+    trained_models["XGBoost"] = xgb_model
     print(f"    done in {time.time()-t0:.1f}s -> {results[-1]}")
 
-    """print("\n[6] Training HybridForecaster (60% HistGB + 40% Fourier Ridge)...")
+    print("\n[6] Training HybridForecaster (60% HistGB + 40% Fourier Ridge)...")
     t0 = time.time()
     hybrid = HybridForecaster(tree_weight=0.6, linear_weight=0.4)
     hybrid.fit(train_df, y_train)
     hybrid_pred = hybrid.predict(test_df)
     results.append(evaluate(y_test, hybrid_pred, "Hybrid"))
     trained_models["Hybrid"] = hybrid
-    print(f"    done in {time.time()-t0:.1f}s -> {results[-1]}")"""
+    print(f"    done in {time.time()-t0:.1f}s -> {results[-1]}")
 
     eval_df = pd.DataFrame(results).sort_values("WAPE_%")
     print("\n[7] Model comparison (lower WAPE/SMAPE/RMSE, higher R2 = better):")
@@ -112,9 +113,12 @@ def main():
                                              random_state=42, n_jobs=-1, bootstrap=True)
         final_model.fit(full_X, full_y)
     else:
-        final_model = LGBMRegressor(n_estimators=500,learning_rate=0.05,force_row_wise='true',
-                                random_state=42  )
-        final_model.fit(df_features, full_y)
+        final_model = XGBRegressor(n_estimators=500, learning_rate=0.05,
+            max_depth=5,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42)
+        final_model.fit(full_X, full_y)
 
     future_forecast = _forecast_future(daily_ts, final_model, best_model_name, feature_cols, horizon=90)
 
@@ -191,7 +195,7 @@ def _forecast_future(daily_ts, model, model_name, feature_cols, horizon=90):
         if model_name == "RandomForest":
             pred = float(model.predict(X_row)[0])
         else:
-            pred = float(model.predict(pd.DataFrame([row]))[0])
+            pred = float(model.predict(X_row)[0])
 
         row["daily_gmv_forecast"] = pred
         future_rows.append(row)
